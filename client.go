@@ -96,9 +96,12 @@ type Client struct {
 	// conn is the open connection
 	conn *uacp.Conn
 
+	connUnix *uacp.ConnUnix
 	// sechan is the open secure channel.
-	atomicSechan atomic.Value // *uasc.SecureChannel
-	sechanErr    chan error
+	atomicSechan     atomic.Value // *uasc.SecureChannel
+	atomicSechanUnix atomic.Value
+
+	sechanErr chan error
 
 	// atomicSession is the active atomicSession.
 	atomicSession atomic.Value // *Session
@@ -145,7 +148,7 @@ type Client struct {
 // To modify configuration you can provide any number of Options as opts. See
 // #Option for details.
 //
-// https://godoc.org/github.com/gopcua/opcua#Option
+// https://godoc.org/gitlab.zmjkf.cn/zmos/opcua#Option
 func NewClient(endpoint string, opts ...Option) *Client {
 	cfg := ApplyConfig(opts...)
 	c := Client{
@@ -161,6 +164,7 @@ func NewClient(endpoint string, opts ...Option) *Client {
 	c.setPublishTimeout(uasc.MaxTimeout)
 	c.setState(Closed)
 	c.setSecureChannel(nil)
+	c.setSecureChannelUnix(nil)
 	c.setSession(nil)
 	c.setNamespaces([]string{})
 	return &c
@@ -185,7 +189,6 @@ func (c *Client) Connect(ctx context.Context) (err error) {
 	if c.SecureChannel() != nil {
 		return errors.Errorf("already connected")
 	}
-
 	c.setState(Connecting)
 	if err := c.Dial(ctx); err != nil {
 		stats.RecordError(err)
@@ -218,7 +221,7 @@ func (c *Client) Connect(ctx context.Context) (err error) {
 
 	// todo(fs): we might need to guard this with an option in case of a broken
 	// todo(fs): server. For the sake of simplicity we left the option out but
-	// todo(fs): see the discussion in https://github.com/gopcua/opcua/pull/512
+	// todo(fs): see the discussion in https://gitlab.zmjkf.cn/zmos/opcua/pull/512
 	// todo(fs): and you should find a commit that implements this option.
 	if err := c.UpdateNamespacesWithContext(ctx); err != nil {
 		c.CloseWithContext(ctx)
@@ -331,7 +334,7 @@ func (c *Client) monitor(ctx context.Context) {
 						// todo(fs): why we are trying to create a new secure channel when we shut the client
 						// todo(fs): down.
 						//
-						// https://github.com/gopcua/opcua/pull/470
+						// https://gitlab.zmjkf.cn/zmos/opcua/pull/470
 						c.conn.Close()
 						if sc := c.SecureChannel(); sc != nil {
 							sc.Close()
@@ -565,7 +568,7 @@ func (c *Client) CloseWithContext(ctx context.Context) error {
 		c.SecureChannel().Close()
 	}
 
-	// https://github.com/gopcua/opcua/pull/462
+	// https://gitlab.zmjkf.cn/zmos/opcua/pull/462
 	//
 	// do not close the c.sechanErr channel since it leads to
 	// race conditions and it gets garbage collected anyway.
@@ -824,7 +827,7 @@ func (c *Client) ActivateSessionWithContext(ctx context.Context, s *Session) err
 
 		// close the previous session
 		//
-		// https://github.com/gopcua/opcua/issues/474
+		// https://gitlab.zmjkf.cn/zmos/opcua/issues/474
 		//
 		// We decided not to check the error of CloseSession() since we
 		// can't do much about it anyway and it creates a race in the
